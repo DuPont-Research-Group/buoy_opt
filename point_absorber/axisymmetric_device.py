@@ -10,8 +10,9 @@ logging.basicConfig(level=logging.INFO,
 # Problem setup
 draft = 5
 show_mesh = False
-device_mass = 1e5  # TODO: use shape profile to generate mass and stiffness values
-device_stiffness = 1e4
+plot_results = False
+device_mass = 1e6  # TODO: use shape profile to generate mass and stiffness values
+device_stiffness = 1e7
 
 os.system('cls')
 
@@ -51,13 +52,14 @@ excitation_force = dataset['excitation_force'].sel(wave_direction=0.0)
 intrinsic_impedance = radiation_damping + 1.0j * omega_range * (device_mass + added_mass - device_stiffness / (omega_range ** 2))
 power_take_off_impedance = np.conjugate(intrinsic_impedance)
 optimal_velocity = excitation_force / (2 * np.real(intrinsic_impedance))
-power_take_off_force = power_take_off_impedance * optimal_velocity
-optimal_power = np.real(power_take_off_impedance * optimal_velocity)
+power_take_off_force = -1.0 * power_take_off_impedance * optimal_velocity
+optimal_power = 0.5 * power_take_off_force * optimal_velocity
 
 # Plot results
-plt.figure()
-plt.plot(omega_range, optimal_power, marker='o')
-plt.xlabel('omega')
-plt.ylabel('Optimal Power')
-plt.tight_layout()
-plt.show()
+if plot_results:
+    plt.figure()
+    plt.plot(omega_range, optimal_power, marker='o')
+    plt.xlabel('omega')
+    plt.ylabel('Optimal Power')
+    plt.tight_layout()
+    plt.show()
