@@ -2,23 +2,24 @@ import os
 import logging
 import numpy as np
 import capytaine as cpt
+import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.INFO,
                     format="%(levelname)s:\t%(message)s")
 
-# Inputs
+# Problem setup
 draft = 5
 show_mesh = False
-device_mass = 1e5
+device_mass = 1e5  # TODO: use shape profile to generate mass and stiffness values
 device_stiffness = 1e4
 
 os.system('cls')
 
-# Set up shape profile for the axisymmetric body
+# Set up shape profile r(z) for the axisymmetric body
 def shape(z):
     return 0.1*(-(z+1)**2 + 16)
 
-
+# Create device mesh object from the shape profile
 buoy = cpt.FloatingBody(
     cpt.AxialSymmetricMesh.from_profile(shape, z_range=np.linspace(-draft, 0, 30), nphi=40)
 )
@@ -34,31 +35,26 @@ problems = [cpt.RadiationProblem(body=buoy, radiating_dof='Heave', omega=omega)
 problems += [cpt.DiffractionProblem(omega=omega, body=buoy, wave_direction=0.0)
             for omega in omega_range]
 
-
 # Solve the problems using the axial symmetry
-solver = cpt.BEMSolver(engine=cpt.HierarchicalToeplitzMatrixEngine())
+solver = cpt.BEMSolver(engine=cpt.HierarchicalToeplitzMatrixEngine())  # TODO: investigate why this engine is uses
 results = [solver.solve(pb) for pb in sorted(problems)]
 *radiation_results, diffraction_result = results
 dataset = cpt.assemble_dataset(results)
 
-# Plot results
-import matplotlib.pyplot as plt
-
+# Assemble needed values for control algorithm
 added_mass = dataset['added_mass'].sel(radiating_dof='Heave', influenced_dof='Heave')
 radiation_damping = dataset['radiation_damping'].sel(radiating_dof='Heave', influenced_dof='Heave')
-
 dataset['excitation_force'] = dataset['Froude_Krylov_force'] + dataset['diffraction_force']
 excitation_force = dataset['excitation_force'].sel(wave_direction=0.0)
 
+# Control algorithm  # TODO: get this working : )
 intrinsic_impedance = radiation_damping + 1.0j * omega_range * (device_mass + added_mass - device_stiffness / (omega_range ** 2))
 power_take_off_impedance = np.conjugate(intrinsic_impedance)
-
 optimal_velocity = excitation_force / (2 * np.real(intrinsic_impedance))
-
 power_take_off_force = power_take_off_impedance * optimal_velocity
 optimal_power = np.real(power_take_off_impedance * optimal_velocity)
 
-
+# Plot results
 plt.figure()
 plt.plot(omega_range, optimal_power, marker='o')
 plt.xlabel('omega')
