@@ -67,7 +67,7 @@ def bezier_curve(points, nTimes=1000):
     return xvals, zvals, profile_pts
 
 
-test_pts = np.random.randint(-draft, 0, size=(10, 3))
+test_pts = np.random.default_rng().uniform(-draft, 0, size=(10, 3))
 bez_x, bez_z, bez_set = bezier_curve(test_pts, nTimes=50)
 buoy = cpt.FloatingBody(
     cpt.AxialSymmetricMesh.from_profile(profile=bez_set, nphi=40)
