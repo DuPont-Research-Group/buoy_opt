@@ -36,7 +36,7 @@ def bernstein_poly(i, n, t):
     return comb(n, i) * t ** i * (1 - t) ** (n - i)
 
 
-def bezier_curve(points, nTimes=1000):
+def bezier_curve(points, ntimes=1000):
     """
        Given a set of control points, return the
        bezier curve defined by the control points.
@@ -68,7 +68,7 @@ def bezier_curve(points, nTimes=1000):
 
 
 test_pts = np.random.default_rng().uniform(-draft, 0, size=(10, 3))
-bez_x, bez_z, bez_set = bezier_curve(test_pts, nTimes=50)
+bez_x, bez_z, bez_set = bezier_curve(test_pts, ntimes=50)
 buoy = cpt.FloatingBody(
     cpt.AxialSymmetricMesh.from_profile(profile=bez_set, nphi=40)
 )
