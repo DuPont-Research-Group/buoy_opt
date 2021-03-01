@@ -55,7 +55,7 @@ def bezier_curve(points, ntimes=1000):
     # yPoints = np.array([p[1] for p in points])
     zPoints = np.array([p[2] for p in points])
 
-    t = np.linspace(0.0, 1.0, nTimes)
+    t = np.linspace(0.0, 1.0, ntimes)
 
     polynomial_array = np.array([bernstein_poly(i, nPoints - 1, t) for i in range(0, nPoints)])
 
@@ -66,11 +66,28 @@ def bezier_curve(points, ntimes=1000):
 
     return xvals, zvals, profile_pts
 
+# Create z and x points
+zpts = np.linspace(-draft, 0, 10)
+xpts = np.random.default_rng().uniform(0, 5, size=(10, 1))
+xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(10)])
 
-test_pts = np.random.default_rng().uniform(-draft, 0, size=(10, 3))
+# Closing type 1: Create closing at top and bottom of test points so the curve tries to close itself, effectively 12
+# control points
+top = np.array(xyz_pts[0])
+top[0] = 0
+bottom = np.array(xyz_pts[-1])
+bottom[0] = 0
+test_pts = np.concatenate(([top], xyz_pts, [bottom]), axis=0)
+
 bez_x, bez_z, bez_set = bezier_curve(test_pts, ntimes=50)
+
+# Closing type 2: Create closing at top and bottom of curve
+bottom = np.array(bez_set[-1])
+bottom[0] = 0
+bez_shape = np.concatenate((bez_set, [bottom]), axis=0)
+
 buoy = cpt.FloatingBody(
-    cpt.AxialSymmetricMesh.from_profile(profile=bez_set, nphi=40)
+    cpt.AxialSymmetricMesh.from_profile(profile=bez_shape, nphi=40)
 )
 
 # Not sure on units,found here:
