@@ -71,20 +71,14 @@ zpts = np.linspace(-draft, 0, 10)
 xpts = np.random.default_rng().uniform(0, 5, size=(10, 1))
 xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(10)])
 
-# Closing type 1: Create closing at top and bottom of test points so the curve tries to close itself, effectively 12
-# control points
-top = np.array(xyz_pts[0])
+bez_x, bez_z, bez_set = bezier_curve(xyz_pts, ntimes=50)
+
+# Create closing at top and bottom of curve
+top = np.array(bez_set[0])
 top[0] = 0
-bottom = np.array(xyz_pts[-1])
-bottom[0] = 0
-test_pts = np.concatenate(([top], xyz_pts, [bottom]), axis=0)
-
-bez_x, bez_z, bez_set = bezier_curve(test_pts, ntimes=50)
-
-# Closing type 2: Create closing at top and bottom of curve
 bottom = np.array(bez_set[-1])
 bottom[0] = 0
-bez_shape = np.concatenate((bez_set, [bottom]), axis=0)
+bez_shape = np.concatenate(([top], bez_set, [bottom]), axis=0)
 
 buoy = cpt.FloatingBody(
     cpt.AxialSymmetricMesh.from_profile(profile=bez_shape, nphi=40)
@@ -105,6 +99,7 @@ buoy.add_translation_dof(name="Heave")
 
 if show_mesh:
     buoy.show()
+buoy.show()
 
 # Set up radiation and diffraction problems
 omega_range = np.linspace(0.3, 5.0, 60)
