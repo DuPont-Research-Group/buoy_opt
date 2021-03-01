@@ -55,7 +55,7 @@ def bezier_curve(points, ntimes=1000):
     # yPoints = np.array([p[1] for p in points])
     zPoints = np.array([p[2] for p in points])
 
-    t = np.linspace(0.0, 1.0, nTimes)
+    t = np.linspace(0.0, 1.0, ntimes)
 
     polynomial_array = np.array([bernstein_poly(i, nPoints - 1, t) for i in range(0, nPoints)])
 
@@ -66,11 +66,27 @@ def bezier_curve(points, ntimes=1000):
 
     return xvals, zvals, profile_pts
 
+# Create z and x points
+zpts = np.linspace(-15, 0, 5)
+xpts = np.random.uniform(-2, 7.5, size=(5,1))
+xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(5)])
 
-test_pts = np.random.default_rng().uniform(-draft, 0, size=(10, 3))
-bez_x, bez_z, bez_set = bezier_curve(test_pts, ntimes=50)
+bez_x, bez_z, bez_set = bezier_curve(xyz_pts, ntimes=50)
+plt.plot(bez_x, bez_z, marker='o')
+plt.show()
+
+# Create closing at top and bottom of curve
+bottom = np.array(bez_set[0])
+bottom_edge = bottom[0]
+bottom_spacing = np.linspace(0, bottom_edge, 6)
+bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(5)])
+# bottom[0] = 0
+top = np.array(bez_set[-1])
+top[0] = 0
+bez_shape = np.concatenate((bottom_pts, bez_set, [top]), axis=0)
+
 buoy = cpt.FloatingBody(
-    cpt.AxialSymmetricMesh.from_profile(profile=bez_set, nphi=40)
+    cpt.AxialSymmetricMesh.from_profile(profile=bez_shape, nphi=40)
 )
 
 # Not sure on units,found here:
@@ -88,6 +104,7 @@ buoy.add_translation_dof(name="Heave")
 
 if show_mesh:
     buoy.show()
+buoy.show()
 
 # Set up radiation and diffraction problems
 omega_range = np.linspace(0.3, 5.0, 60)
