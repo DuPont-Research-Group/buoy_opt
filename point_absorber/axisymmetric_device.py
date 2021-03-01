@@ -67,18 +67,23 @@ def bezier_curve(points, ntimes=1000):
     return xvals, zvals, profile_pts
 
 # Create z and x points
-zpts = np.linspace(-draft, 0, 10)
-xpts = np.random.default_rng().uniform(0, 5, size=(10, 1))
-xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(10)])
+zpts = np.linspace(-15, 0, 5)
+xpts = np.random.uniform(-2, 7.5, size=(5,1))
+xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(5)])
 
 bez_x, bez_z, bez_set = bezier_curve(xyz_pts, ntimes=50)
+plt.plot(bez_x, bez_z, marker='o')
+plt.show()
 
 # Create closing at top and bottom of curve
-top = np.array(bez_set[0])
+bottom = np.array(bez_set[0])
+bottom_edge = bottom[0]
+bottom_spacing = np.linspace(0, bottom_edge, 6)
+bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(5)])
+# bottom[0] = 0
+top = np.array(bez_set[-1])
 top[0] = 0
-bottom = np.array(bez_set[-1])
-bottom[0] = 0
-bez_shape = np.concatenate(([top], bez_set, [bottom]), axis=0)
+bez_shape = np.concatenate((bottom_pts, bez_set, [top]), axis=0)
 
 buoy = cpt.FloatingBody(
     cpt.AxialSymmetricMesh.from_profile(profile=bez_shape, nphi=40)
