@@ -62,49 +62,34 @@ def bezier_curve(points, ntimes=1000):
     xvals = np.dot(xPoints, polynomial_array)
     # yvals = np.dot(yPoints, polynomial_array)
     zvals = np.dot(zPoints, polynomial_array)
-    profile_pts = np.asarray([[xvals[i], 0, zvals[i]] for i in range(nPoints)])
+    profile_pts = np.asarray([[xvals[i], 0, zvals[i]] for i in range(ntimes)])
 
     return xvals, zvals, profile_pts
 
-# Create z and x points
-zpts = np.linspace(-15, 0, 5)
-xpts = np.random.uniform(-2, 7.5, size=(5,1))
-xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(5)])
 
-bez_x, bez_z, bez_set = bezier_curve(xyz_pts, ntimes=50)
-plt.plot(bez_x, bez_z, marker='o')
-plt.show()
+def make_mesh(points_array, excursion=0):
 
-# Create closing at top and bottom of curve
-bottom = np.array(bez_set[0])
-bottom_edge = bottom[0]
-bottom_spacing = np.linspace(0, bottom_edge, 6)
-bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(5)])
-# bottom[0] = 0
-top = np.array(bez_set[-1])
-top[0] = 0
-bez_shape = np.concatenate((bottom_pts, bez_set, [top]), axis=0)
+    # Close the bottom of the points
+    bottom = np.array(points_array[0])
+    bottom_spacing = np.linspace(0, bottom[0], 6)
+    bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(5)])
+    mesh_shape = np.concatenate((bottom_pts, points_array), axis=0)
 
-buoy = cpt.FloatingBody(
-    cpt.AxialSymmetricMesh.from_profile(profile=bez_shape, nphi=40)
-)
+    # Make mesh and add DOF
+    buoy = cpt.FloatingBody(cpt.AxialSymmetricMesh.from_profile(profile=mesh_shape, nphi=40))
+    buoy.add_translation_dof(name="Heave")
 
-# Not sure on units,found here:
-# https://ancell.in/capytaine/latest/developer_manual/api/capytaine.meshes.meshes.html?highlight=volume
-volume = buoy.mesh.volume
+    # Calculate the mass and stiffness parameters
+    volume = buoy.mesh.volume
+    mass = volume * 1000
+    r = points_array[-1][0]
+    stiffness = np.pi * 1000 * 9.81 * r**2 * (1 - (excursion**2 / (3 * r**2)))
 
-###############################################################
-###############################################################
+    return mesh_shape, buoy, mass, stiffness
 
-# Create device mesh object from the shape profile
-# buoy = cpt.FloatingBody
-#     cpt.AxialSymmetricMesh.from_profile(shape, z_range=np.linspace(-draft, 0, 30), nphi=40)
-# )
-buoy.add_translation_dof(name="Heave")
 
 if show_mesh:
     buoy.show()
-buoy.show()
 
 # Set up radiation and diffraction problems
 omega_range = np.linspace(0.3, 5.0, 60)
@@ -141,3 +126,14 @@ if plot_results:
     plt.ylabel('Optimal Power')
     plt.tight_layout()
     plt.show()
+
+
+if __name__ == '__main__':
+    # Create z and x points
+    zpts = np.linspace(-5, 0, 10)
+    xpts = np.random.uniform(0, 5, size=(10, 1))
+    xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(10)])
+    bez_x, bez_y, bez_pts = bezier_curve(xyz_pts, ntimes=100)
+
+    buoy_shape, buoy_mesh, buoy_mass, buoy_stiffness = make_mesh(bez_pts)
+    buoy_mesh.show()
