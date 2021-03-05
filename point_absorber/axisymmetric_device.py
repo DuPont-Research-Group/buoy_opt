@@ -5,9 +5,13 @@ import matplotlib.pyplot as plt
 from scipy.special import comb
 import random
 import xarray as xr
+from scipy.optimize import minimize
+from geneticalgorithm import geneticalgorithm as ga
+import time
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(levelname)s:\t%(message)s")
+
+# logging.basicConfig(level=logging.INFO,
+#                     format="%(levelname)s:\t%(message)s")
 
 
 # Generating the Bezier Curve:
@@ -36,9 +40,9 @@ def bezier_curve(points, num_steps=1000):
 
     # Separate the control points into individual coordinate arrays
     number_control_points = len(points)
-    x_coord = np.array([p[0] for p in points])
+    x_coord = points  # np.array([p for p in points])
     # y_coord = np.array([p[1] for p in points])
-    z_coord = np.array([p[2] for p in points])
+    z_coord = z_control_pts  # np.array([p[2] for p in points])
 
     # Create the polynomial array of the bezier curve that is of length num_steps
     t = np.linspace(0.0, 1.0, num_steps)
@@ -55,11 +59,10 @@ def bezier_curve(points, num_steps=1000):
 
 
 def make_mesh(points_array):
-
     # Close the bottom of the points
     bottom = np.array(points_array[0])
     bottom_spacing = np.linspace(0, bottom[0], mesh_bottom_cells)
-    bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(mesh_bottom_cells-1)])
+    bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(mesh_bottom_cells - 1)])
     mesh_shape = np.concatenate((bottom_pts, points_array), axis=0)
 
     # Make mesh and add the vertical degree of freedom
@@ -92,7 +95,8 @@ def evaluate_buoy_forces(buoy_object):
 def complex_conjugate_control(device_data, device_mass, device_stiffness):
     # Assemble needed values for control algorithm
     added_mass = device_data['added_mass'].sel(radiating_dof=degree_of_freedom, influenced_dof=degree_of_freedom).data
-    radiation_damping = device_data['radiation_damping'].sel(radiating_dof=degree_of_freedom, influenced_dof=degree_of_freedom).data
+    radiation_damping = device_data['radiation_damping'].sel(radiating_dof=degree_of_freedom,
+                                                             influenced_dof=degree_of_freedom).data
     friction_damping = 0.10 * np.max(radiation_damping)
     # TODO: adjust frictional damping if necessary
 
@@ -103,7 +107,8 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
     excitation_force = excitation_force[0, :]
 
     # Calculate the random wave offset and excitation for each frequency component
-    wave_spectra = bretschneider_mitsuyasu_spectrum(omega_range, site_significant_wave_height, site_significant_wave_period)
+    wave_spectra = bretschneider_mitsuyasu_spectrum(omega_range, site_significant_wave_height,
+                                                    site_significant_wave_period)
     d_omega = omega_range[1] - omega_range[0]
     random_phase_offset = 2 * np.pi * np.random.rand(len(omega_range))
     frequency_domain_wave_spectrum_amplitudes = 2 * np.sqrt(wave_spectra * d_omega) * np.exp(1.0j * random_phase_offset)
@@ -150,38 +155,25 @@ def objective_function(power_data):
     return annual_power
 
 
-if __name__ == '__main__':
+def objective_function2(profile_points):
+    global time_elapsed
 
-    # User inputs
-    draft = 5
-    radial_control_points = 8
-    mesh_resolution = 40
-    mesh_bottom_cells = 6
-    degree_of_freedom = 'Heave'
-    wave_direction = 0.0
-    omega_range = np.linspace(0.3, 2.0, 40)
-    site_significant_wave_height = 3.5
-    site_significant_wave_period = 11.0
-    plot_results = True
-    show_mesh = True
+    # Create bezier points
+    bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=100)
 
-    # Random seed used for debugging between runs on the same mesh
-    random.seed(37)
-
-    # Create z and x points
-    zpts = np.linspace(-draft, 0, radial_control_points)
-    xpts = np.random.uniform(0.01, 5, size=(radial_control_points, 1))  # TODO: adjust bounds within constraints so that r(z) > 0
-    xyz_pts = np.asarray([[xpts[i][0], 0, zpts[i]] for i in range(radial_control_points)])
-    bez_x, bez_y, bez_pts = bezier_curve(xyz_pts, num_steps=100)
-
+    # Make Mesh
     wec_shape, wec_mesh, wec_mass, wec_stiffness = make_mesh(bez_pts)
 
     if show_mesh:
         wec_mesh.show()
 
+    # Evaluate mesh
     wec_hydrodynamic_data = evaluate_buoy_forces(wec_mesh)
     wec_power_data = complex_conjugate_control(wec_hydrodynamic_data, wec_mass, wec_stiffness)
-    annual_produced_power = objective_function(wec_power_data)
+
+    # Calculate Annual Power
+    annual_power = -1.0 * np.sum(np.real(wec_power_data))
+    # print(annual_power)
 
     # Plot results
     if plot_results:
@@ -190,3 +182,86 @@ if __name__ == '__main__':
         plt.ylabel('Optimal Power')
         plt.tight_layout()
         plt.show()
+
+    # Save results to global history variable
+    point_history.append([profile_points, annual_power])
+
+    if verbose:
+        if (time.perf_counter() - start_time) / 60 > time_elapsed:
+            print('\t{} minutes elapsed'.format(round(((time.perf_counter() - start_time) / 60), 2)),
+                  '\n\tCurrent control points: {}'.format(profile_points),
+                  '\n\tAnnual Power: {}\n'.format(annual_power)
+                  )
+            time_elapsed += print_freq
+
+    return annual_power
+
+
+if __name__ == '__main__':
+
+    ##############################
+    # User inputs: WEC vars
+    draft = 5
+    radial_control_points = 8
+    z_control_pts = np.linspace(-draft, 0, radial_control_points)
+    mesh_resolution = 40
+    mesh_bottom_cells = 6
+    degree_of_freedom = 'Heave'
+
+    # User inputs: Wave vars
+    wave_direction = 0.0
+    omega_range = np.linspace(0.3, 2.0, 40)
+    site_significant_wave_height = 3.5
+    site_significant_wave_period = 11.0
+
+    # User input: Visualization/Logging vars
+    plot_results = False
+    show_mesh = False
+    verbose = True
+    print_freq = 5  # minutes
+
+    # User input: Optimization Vars
+    opt_method = 'Nelder-Mead'
+    number_of_runs = 1
+    max_iterations = 1  # Set to None if you want the default max iterations
+    ##############################
+
+    # Global List used to record all profiles
+    point_history = []
+
+    # Random seed used for debugging between runs on the same mesh
+    # random.seed(37)
+
+    # Loop for if we want to run multiple times with different starting points
+    for run in range(number_of_runs):
+        time_elapsed = print_freq
+
+        if verbose:
+            print('Starting Run {} of {}\n'.format(run + 1, number_of_runs))
+
+        # Create starting radial control point
+        start_x_points = np.random.uniform(0.01, 5, size=radial_control_points)
+
+        # Creat point bounds
+        point_bounds = np.array([[0, 5]] * radial_control_points)
+
+        # Run
+        start_time = time.perf_counter()
+        result = minimize(objective_function2,
+                          start_x_points,
+                          method=opt_method,
+                          options={'disp': True, 'return_all': True, 'maxiter': max_iterations}
+                          )
+        end_time = time.perf_counter()
+
+        if verbose:
+            print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60), result)
+
+        np.savez('./Run_{}_Results_{}_{}_controlpts'.format(run + 1, opt_method, radial_control_points),
+                 result=result,
+                 history=point_history
+                 )
+
+    # Create the GA model and run it
+    # model_int = ga(function=objective_function2, dimension=8, variable_type='real', variable_boundaries=point_bounds)
+    # model_int.run()
