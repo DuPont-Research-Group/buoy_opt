@@ -187,8 +187,8 @@ def objective_function2(profile_points):
     point_history.append([profile_points, annual_power])
 
     if verbose:
-        if (time.perf_counter()-start_time)/60 > time_elapsed:
-            print('\t{} minutes elapsed'.format(round(((time.perf_counter()-start_time)/60), 2)),
+        if (time.perf_counter() - start_time) / 60 > time_elapsed:
+            print('\t{} minutes elapsed'.format(round(((time.perf_counter() - start_time) / 60), 2)),
                   '\n\tCurrent control points: {}'.format(profile_points),
                   '\n\tAnnual Power: {}\n'.format(annual_power)
                   )
@@ -237,7 +237,7 @@ if __name__ == '__main__':
         time_elapsed = print_freq
 
         if verbose:
-            print('Starting Run {} of {}\n'.format(run+1, number_of_runs))
+            print('Starting Run {} of {}\n'.format(run + 1, number_of_runs))
 
         # Create starting radial control point
         start_x_points = np.random.uniform(0.01, 5, size=radial_control_points)
@@ -255,12 +255,12 @@ if __name__ == '__main__':
         end_time = time.perf_counter()
 
         if verbose:
-            print('\nTook {} minute(s) to run\n'.format((end_time-start_time)/60), result)
+            print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60), result)
 
-        np.savez('./Run_{}_Results_{}_{}_controlpts'.format(run+1, opt_method, radial_control_points),
-                   result=result,
-                   history=point_history
-                   )
+        np.savez('./Run_{}_Results_{}_{}_controlpts'.format(run + 1, opt_method, radial_control_points),
+                 result=result,
+                 history=point_history
+                 )
 
     # Create the GA model and run it
     # model_int = ga(function=objective_function2, dimension=8, variable_type='real', variable_boundaries=point_bounds)
