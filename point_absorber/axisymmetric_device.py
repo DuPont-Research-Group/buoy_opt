@@ -155,9 +155,6 @@ def objective_function(power_data):
 
 def objective_function2(profile_points):
 
-    # Check if any profile points are negative, if yes set those points to 0.01 (going to zero would be impossible)
-    profile_points[profile_points < 0] = 0.01
-
     # Create bezier points
     bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=100)
 
@@ -171,8 +168,12 @@ def objective_function2(profile_points):
     wec_hydrodynamic_data = evaluate_buoy_forces(wec_mesh)
     wec_power_data = complex_conjugate_control(wec_hydrodynamic_data, wec_mass, wec_stiffness)
 
-    # Calculate Annual Power
-    annual_power = -1.0 * np.sum(np.real(wec_power_data))
+    # Check if any profile points are negative, if yes set those points to 0.01 (going to zero would be impossible)
+    if np.where(profile_points < 0.01):
+        annual_power = 10e23
+    else:
+        # Calculate Annual Power
+        annual_power = -1.0 * np.sum(np.real(wec_power_data))
 
     # Plot results
     if plot_results:
