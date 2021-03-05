@@ -6,9 +6,7 @@ from scipy.special import comb
 import random
 import xarray as xr
 from scipy.optimize import minimize
-from geneticalgorithm import geneticalgorithm as ga
 import time
-
 
 # logging.basicConfig(level=logging.INFO,
 #                     format="%(levelname)s:\t%(message)s")
@@ -156,7 +154,9 @@ def objective_function(power_data):
 
 
 def objective_function2(profile_points):
-    global time_elapsed
+
+    # Check if any profile points are negative, if yes set those points to 0.01 (going to zero would be impossible)
+    profile_points[profile_points < 0] = 0.01
 
     # Create bezier points
     bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=100)
@@ -173,7 +173,6 @@ def objective_function2(profile_points):
 
     # Calculate Annual Power
     annual_power = -1.0 * np.sum(np.real(wec_power_data))
-    # print(annual_power)
 
     # Plot results
     if plot_results:
@@ -187,12 +186,8 @@ def objective_function2(profile_points):
     point_history.append([profile_points, annual_power])
 
     if verbose:
-        if (time.perf_counter() - start_time) / 60 > time_elapsed:
-            print('\t{} minutes elapsed'.format(round(((time.perf_counter() - start_time) / 60), 2)),
-                  '\n\tCurrent control points: {}'.format(profile_points),
-                  '\n\tAnnual Power: {}\n'.format(annual_power)
-                  )
-            time_elapsed += print_freq
+        print('\tCurrent control points: {}'.format(profile_points),
+              '\n\tAnnual Power: {}\n'.format(annual_power))
 
     return annual_power
 
@@ -218,12 +213,11 @@ if __name__ == '__main__':
     plot_results = False
     show_mesh = False
     verbose = True
-    print_freq = 5  # minutes
 
     # User input: Optimization Vars
     opt_method = 'Nelder-Mead'
     number_of_runs = 1
-    max_iterations = 1  # Set to None if you want the default max iterations
+    max_iterations = 50  # Set to None if you want the default max iterations
     ##############################
 
     # Global List used to record all profiles
@@ -234,7 +228,6 @@ if __name__ == '__main__':
 
     # Loop for if we want to run multiple times with different starting points
     for run in range(number_of_runs):
-        time_elapsed = print_freq
 
         if verbose:
             print('Starting Run {} of {}\n'.format(run + 1, number_of_runs))
@@ -250,18 +243,12 @@ if __name__ == '__main__':
         result = minimize(objective_function2,
                           start_x_points,
                           method=opt_method,
-                          options={'disp': True, 'return_all': True, 'maxiter': max_iterations}
-                          )
+                          options={'disp': True, 'return_all': True, 'maxiter': max_iterations})
         end_time = time.perf_counter()
 
         if verbose:
             print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60), result)
 
-        np.savez('./Run_{}_Results_{}_{}_controlpts'.format(run + 1, opt_method, radial_control_points),
+        np.savez('./Run_{}_{}_{}_iter_{}_control'.format(run + 1, opt_method, max_iterations, radial_control_points),
                  result=result,
-                 history=point_history
-                 )
-
-    # Create the GA model and run it
-    # model_int = ga(function=objective_function2, dimension=8, variable_type='real', variable_boundaries=point_bounds)
-    # model_int.run()
+                 history=point_history)
