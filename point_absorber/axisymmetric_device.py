@@ -8,9 +8,7 @@ import xarray as xr
 from scipy.optimize import minimize
 import time
 
-# logging.basicConfig(level=logging.INFO,
-#                     format="%(levelname)s:\t%(message)s")
-
+# logging.basicConfig(level=logging.INFO, format="%(levelname)s:\t%(message)s")
 
 # Generating the Bezier Curve:
 # https://stackoverflow.com/questions/12643079/b%C3%A9zier-curve-fitting-with-scipy
@@ -72,6 +70,12 @@ def make_mesh(points_array):
     mass = volume * 1000
     radius = points_array[-1][0]
     stiffness = np.pi * 1000 * 9.81 * radius ** 2
+    approximate_resonance_radial_frequency = np.sqrt(stiffness / mass)
+
+    if verbose:
+        print('Mass = {}'.format(mass))
+        print('Stiffness = {}'.format(stiffness))
+        print('Approximate resonance radial frequency = {} rad/s'.format(approximate_resonance_radial_frequency))
 
     return mesh_shape, buoy, mass, stiffness
 
@@ -95,8 +99,10 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
     added_mass = device_data['added_mass'].sel(radiating_dof=degree_of_freedom, influenced_dof=degree_of_freedom).data
     radiation_damping = device_data['radiation_damping'].sel(radiating_dof=degree_of_freedom,
                                                              influenced_dof=degree_of_freedom).data
-    friction_damping = 0.10 * np.max(radiation_damping)
-    # TODO: adjust frictional damping if necessary
+
+    # Set unrealistic negative radiation damping values to zero and add in extra system damping to counter potential flow assumptions
+    radiation_damping[np.where(radiation_damping < 0.0)] = 0.0
+    friction_damping = friction_damping_factor * np.max(radiation_damping)
 
     # Assemble unit wave amplitude excitation force in same format as added mass and radiation damping arrays
     device_data['excitation_force'] = device_data['Froude_Krylov_force'] + device_data['diffraction_force']
@@ -108,6 +114,7 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
     wave_spectra = bretschneider_mitsuyasu_spectrum(omega_range, site_significant_wave_height,
                                                     site_significant_wave_period)
     d_omega = omega_range[1] - omega_range[0]
+    random.seed(42)
     random_phase_offset = 2 * np.pi * np.random.rand(len(omega_range))
     frequency_domain_wave_spectrum_amplitudes = 2 * np.sqrt(wave_spectra * d_omega) * np.exp(1.0j * random_phase_offset)
     excitation_force = excitation_force * frequency_domain_wave_spectrum_amplitudes
@@ -122,9 +129,9 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
 
     if plot_results:
         plt.plot(omega_range, added_mass, marker='o', label='Added Mass')
-        plt.plot(omega_range, radiation_damping, marker='o', label='Added Mass')
+        plt.plot(omega_range, radiation_damping, marker='o', label='Radiation Damping')
         plt.plot(omega_range, np.abs(excitation_force), marker='o', label='Excitation Force')
-        # TODO: check abs on excitation force magnitude
+        # TODO: check np.abs function on excitation force magnitude
 
         plt.xlabel('$\omega$')
         plt.tight_layout()
@@ -146,14 +153,7 @@ def bretschneider_mitsuyasu_spectrum(wave_radial_frequency_array, significant_wa
     return spectra
 
 
-def objective_function(power_data):
-    annual_power = -1.0 * np.sum(np.real(power_data))
-    print(annual_power)
-
-    return annual_power
-
-
-def objective_function2(profile_points):
+def objective_function(profile_points):
 
     # Create bezier points
     bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=100)
@@ -168,14 +168,14 @@ def objective_function2(profile_points):
     wec_hydrodynamic_data = evaluate_buoy_forces(wec_mesh)
     wec_power_data = complex_conjugate_control(wec_hydrodynamic_data, wec_mass, wec_stiffness)
 
-    # Check if any profile points are negative, if yes set those points to 0.01 (going to zero would be impossible)
-    if np.where(profile_points < 0.01):
-        annual_power = 10e23
+    # Infinite penalty if any radii values are going too low
+    if np.count_nonzero(bez_x < 0.01) > 0:
+        annual_power = 1e23
     else:
         # Calculate Annual Power
         annual_power = -1.0 * np.sum(np.real(wec_power_data))
 
-    # Plot results
+    # Plot power results    
     if plot_results:
         plt.plot(omega_range, np.real(wec_power_data), marker='o')
         plt.xlabel('$\omega$')
@@ -198,11 +198,12 @@ if __name__ == '__main__':
     ##############################
     # User inputs: WEC vars
     draft = 5
-    radial_control_points = 8
+    radial_control_points = 3
     z_control_pts = np.linspace(-draft, 0, radial_control_points)
     mesh_resolution = 40
     mesh_bottom_cells = 6
     degree_of_freedom = 'Heave'
+    friction_damping_factor = 0.10
 
     # User inputs: Wave vars
     wave_direction = 0.0
@@ -217,31 +218,31 @@ if __name__ == '__main__':
 
     # User input: Optimization Vars
     opt_method = 'Nelder-Mead'
-    number_of_runs = 1
-    max_iterations = 50  # Set to None if you want the default max iterations
+    number_of_runs = 3
+    max_iterations = None  # Set to None if you want the default max iterations
     ##############################
 
     # Global List used to record all profiles
     point_history = []
 
-    # Random seed used for debugging between runs on the same mesh
-    # random.seed(37)
-
     # Loop for if we want to run multiple times with different starting points
     for run in range(number_of_runs):
-
+        
+        # Random seed for reprodicible initial starting points
+        random.seed(2 * run)
+        
         if verbose:
             print('Starting Run {} of {}\n'.format(run + 1, number_of_runs))
 
         # Create starting radial control point
         start_x_points = np.random.uniform(0.01, 5, size=radial_control_points)
 
-        # Creat point bounds
+        # Create point bounds
         point_bounds = np.array([[0, 5]] * radial_control_points)
 
         # Run
         start_time = time.perf_counter()
-        result = minimize(objective_function2,
+        result = minimize(objective_function,
                           start_x_points,
                           method=opt_method,
                           options={'disp': True, 'return_all': True, 'maxiter': max_iterations})
