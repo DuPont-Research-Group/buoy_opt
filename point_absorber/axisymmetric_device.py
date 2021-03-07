@@ -156,7 +156,7 @@ def bretschneider_mitsuyasu_spectrum(wave_radial_frequency_array, significant_wa
 def objective_function(profile_points):
 
     # Create bezier points
-    bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=100)
+    bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=20)
 
     # Make Mesh
     wec_shape, wec_mesh, wec_mass, wec_stiffness = make_mesh(bez_pts)
