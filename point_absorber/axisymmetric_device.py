@@ -73,9 +73,9 @@ def make_mesh(points_array):
     approximate_resonance_radial_frequency = np.sqrt(stiffness / mass)
 
     if verbose:
-        print('Mass = {}'.format(mass))
-        print('Stiffness = {}'.format(stiffness))
-        print('Approximate resonance radial frequency = {} rad/s'.format(approximate_resonance_radial_frequency))
+        print('\tMass = {}'.format(mass))
+        print('\tStiffness = {}'.format(stiffness))
+        print('\tApproximate resonance radial frequency = {} rad/s'.format(approximate_resonance_radial_frequency))
 
     return mesh_shape, buoy, mass, stiffness
 
@@ -168,8 +168,8 @@ def objective_function(profile_points):
     wec_hydrodynamic_data = evaluate_buoy_forces(wec_mesh)
     wec_power_data = complex_conjugate_control(wec_hydrodynamic_data, wec_mass, wec_stiffness)
 
-    # Infinite penalty if any radii values are going too low
-    if np.count_nonzero(bez_x < 0.01) > 0:
+    # Infinite penalty if any radii values are going too low or an unconstrained optimization method is going out of bounds
+    if np.count_nonzero(bez_x < 0.01) > 0 or np.count_nonzero(bez_x > 2*draft) > 0 or np.count_nonzero(profile_points < 0.01) > 0 or np.count_nonzero(profile_points > 5) > 0:
         annual_power = 1e23
     else:
         # Calculate Annual Power
@@ -187,7 +187,7 @@ def objective_function(profile_points):
     point_history.append([profile_points, annual_power])
 
     if verbose:
-        print('\tCurrent control points: {}'.format(profile_points),
+        print('Current control points: {}'.format(profile_points),
               '\n\tAnnual Power: {}\n'.format(annual_power))
 
     return annual_power
