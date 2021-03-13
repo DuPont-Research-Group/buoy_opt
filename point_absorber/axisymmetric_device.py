@@ -114,7 +114,7 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
     wave_spectra = bretschneider_mitsuyasu_spectrum(omega_range, site_significant_wave_height,
                                                     site_significant_wave_period)
     d_omega = omega_range[1] - omega_range[0]
-    random.seed(42)
+    np.random.seed(42)
     random_phase_offset = 2 * np.pi * np.random.rand(len(omega_range))
     frequency_domain_wave_spectrum_amplitudes = 2 * np.sqrt(wave_spectra * d_omega) * np.exp(1.0j * random_phase_offset)
     excitation_force = excitation_force * frequency_domain_wave_spectrum_amplitudes
@@ -171,6 +171,7 @@ def objective_function(profile_points):
     # Infinite penalty if any radii values are going too low or an unconstrained optimization method is going out of bounds
     if np.count_nonzero(bez_x < 0.01) > 0 or np.count_nonzero(bez_x > 2*draft) > 0 or np.count_nonzero(profile_points < 0.01) > 0 or np.count_nonzero(profile_points > 5) > 0:
         annual_power = 1e23
+        # TODO: multiply infinite penalty by sum of constraint violations
     else:
         # Calculate Annual Power
         annual_power = -1.0 * np.sum(np.real(wec_power_data))
@@ -192,14 +193,92 @@ def objective_function(profile_points):
 
     return annual_power
 
+def exhaustive_search(lower_bound, upper_bound, delta_x):
+
+    d = len(delta_x)
+    x_array_list = []
+    n_candidates = 0
+
+    for k in range(d):
+
+        # Generate array of possible variable values along each dimension and add it to a list
+        q_k = int((upper_bound[k] - lower_bound[k]) / delta_x[k]) + 1
+        x_array = np.linspace(lower_bound[k], upper_bound[k], q_k)
+        x_array_list.append(x_array)
+
+        # Count the number of total design candidates
+        if k == 0:
+            n_candidates = q_k
+        else:
+            n_candidates = n_candidates * q_k
+
+    # Initialize best current location and objective function value
+    x_best = lower_bound
+    f_best = objective_function(lower_bound)
+
+    # Iteratively loop through all 4 dimensions
+    for x1 in range(len(x_array_list[0])):
+        for x2 in range(len(x_array_list[1])):
+            x_new = np.array([x_array_list[0][x1], x_array_list[1][x2]])
+            f_new = objective_function(x_new)
+
+            if f_new < f_best:
+                f_best = f_new
+                x_best = np.copy(x_new)
+
+    print('x* =\n', np.array_str(x_best, precision=3), '\nf* =', str(f_best))
+
+    return x_best, f_best
+
+def random_hill_climbing_algorithm(x_initial_option):
+    # Define transition function
+    def random_climb(x, transitions, lower_bound, upper_bound):
+        in_bounds = False
+        while not in_bounds:
+            rand_x_element = random.randint(0, len(x)-1)
+            rand_climb_dir = random.choice(transitions)
+            x_tmp = x[rand_x_element] + rand_climb_dir
+            if (x_tmp >= lower_bound) and (x_tmp <= upper_bound):
+                x[rand_x_element] = x_tmp
+                in_bounds = True
+
+        return x
+
+    # Define tunable parameters
+    increment_options = np.array([0.50, -0.50, 0.25, -0.25])
+    bounds = [0.01, 5]
+    max_failed_moves = 32
+
+    x_0 = x_initial_option
+    k = 0
+    converged = False
+    f_0 = objective_function(x_0)
+    failed_moves = 0
+    x_k = np.copy(x_0)
+    f_k = f_0
+    while not converged:
+        x_new = random_climb(x_k, increment_options, bounds[0], bounds[1])
+        f_new = objective_function(x_new)
+        if f_new <= f_k:
+            x_k = x_new
+            f_k = f_new
+            failed_moves = 0
+        else:
+            failed_moves += 1
+            if failed_moves > max_failed_moves:
+                converged = True
+        k += 1
+
+    print('x* =\n', np.array_str(x_k, precision=3), '\nf* =', str(f_k))
+
 
 if __name__ == '__main__':
 
     ##############################
     # User inputs: WEC vars
     draft = 5
-    radial_control_points = 3
-    z_control_pts = np.linspace(-draft, 0, radial_control_points)
+    ###radial_control_points = 2
+    ###z_control_pts = np.linspace(-draft, 0, radial_control_points)
     mesh_resolution = 40
     mesh_bottom_cells = 6
     degree_of_freedom = 'Heave'
@@ -217,40 +296,63 @@ if __name__ == '__main__':
     verbose = True
 
     # User input: Optimization Vars
-    opt_method = 'Nelder-Mead'
-    number_of_runs = 3
+    ###opt_method = 'Nelder-Mead'
+    number_of_runs = 4
     max_iterations = None  # Set to None if you want the default max iterations
     ##############################
 
-    # Global List used to record all profiles
-    point_history = []
+
 
     # Loop for if we want to run multiple times with different starting points
     for run in range(number_of_runs):
-        
+    
+        # Global List used to record all profiles
+        ###point_history = []
+
         # Random seed for reprodicible initial starting points
-        random.seed(2 * run)
+        ###np.random.seed(run * radial_control_points)
         
         if verbose:
             print('Starting Run {} of {}\n'.format(run + 1, number_of_runs))
 
         # Create starting radial control point
-        start_x_points = np.random.uniform(0.01, 5, size=radial_control_points)
+        ###start_x_points = np.random.uniform(0.01, 5, size=radial_control_points)
 
         # Create point bounds
-        point_bounds = np.array([[0, 5]] * radial_control_points)
+        ###point_bounds = np.array([[0, 5]] * radial_control_points)
 
         # Run
         start_time = time.perf_counter()
-        result = minimize(objective_function,
-                          start_x_points,
-                          method=opt_method,
-                          options={'disp': True, 'return_all': True, 'maxiter': max_iterations})
+        #result = minimize(objective_function,
+        #                  start_x_points,
+        #                  method=opt_method,
+        #                  options={'disp': True, 'return_all': True, 'maxiter': max_iterations})
+        if run == 0:
+            point_history = []
+            radial_control_points = 2
+            z_control_pts = np.linspace(-draft, 0, radial_control_points)
+            opt_method = 'exhaustive_search'
+            lower_bound = 0.25*np.ones(shape=2)
+            upper_bound = 5.0*np.ones(shape=2)
+            delta_x = 0.25*np.ones(shape=2)
+            exhaustive_search(lower_bound=lower_bound, upper_bound=upper_bound, delta_x=delta_x)
+
+        else:
+            point_history = []
+            radial_control_points = 4
+            z_control_pts = np.linspace(-draft, 0, radial_control_points)
+            opt_method = 'random_hill_climbing_algorithm'
+            x_initial_options = np.array([[1.,  4.5, 0.5, 2. ],
+                                         [0.25, 0.5,  0.5,  2.75],
+                                         [1.75, 4.5,  4.25, 1.  ]]
+                                         )
+            x_start = x_initial_options[run - 1]
+            random_hill_climbing_algorithm(x_start)
+
         end_time = time.perf_counter()
 
         if verbose:
-            print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60), result)
+            print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60))
 
-        np.savez('./Run_{}_{}_{}_iter_{}_control'.format(run + 1, opt_method, max_iterations, radial_control_points),
-                 result=result,
-                 history=point_history)
+        np.savez('./Run_{}_{}_{}_iter_{}_control'.format(run + 1, opt_method, max_iterations, radial_control_points), history=point_history)
+                 #result=best_function_value,
