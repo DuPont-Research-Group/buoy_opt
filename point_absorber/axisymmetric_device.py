@@ -258,7 +258,7 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
     # Define tunable parameters
     increment_options = np.array([0.50, -0.50, 0.25, -0.25])
     bounds = [0.01, 5.0]
-    max_failed_moves = 5
+    max_failed_moves = 128
 
     k = 0
     converged = False
@@ -307,7 +307,7 @@ if __name__ == '__main__':
 
     # User input: Optimization Vars
     ###opt_method = 'Nelder-Mead'
-    number_of_runs = 1
+    number_of_runs = 30
     max_iterations = None  # Set to None if you want the default max iterations
     ##############################
 
