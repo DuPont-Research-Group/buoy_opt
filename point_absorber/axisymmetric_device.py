@@ -185,7 +185,7 @@ def objective_function(profile_points):
         plt.show()
 
     # Save results to global history variable
-    point_history.append([profile_points, annual_power])
+    point_history.append((profile_points, annual_power))
 
     if verbose:
         print('Current control points: {}'.format(profile_points),
@@ -244,7 +244,7 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
                 x[rand_x_element] = x_tmp
                 in_bounds = True
 
-        return x
+        return np.array(x)
 
     # Find a random discrete starting point within the domain bounds if one is not given
     d = len(delta_x)
@@ -258,19 +258,19 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
     # Define tunable parameters
     increment_options = np.array([0.50, -0.50, 0.25, -0.25])
     bounds = [0.01, 5.0]
-    max_failed_moves = 128
+    max_failed_moves = 5
 
     k = 0
     converged = False
     f_0 = objective_function(x_0)
     failed_moves = 0
-    x_k = np.copy(x_0)
+    x_k = np.array(x_0)
     f_k = f_0
     while not converged:
         x_new = random_climb(x_k, increment_options, bounds[0], bounds[1])
-        f_new = objective_function(x_new)
-        if f_new <= f_k:
-            x_k = np.copy(x_new)
+        f_new = objective_function(profile_points=x_new)
+        if f_new < f_k or np.isclose(f_new, f_k):
+            x_k = np.array(x_new)
             f_k = f_new
             failed_moves = 0
         else:
@@ -307,7 +307,7 @@ if __name__ == '__main__':
 
     # User input: Optimization Vars
     ###opt_method = 'Nelder-Mead'
-    number_of_runs = 30
+    number_of_runs = 1
     max_iterations = None  # Set to None if you want the default max iterations
     ##############################
 
@@ -360,6 +360,6 @@ if __name__ == '__main__':
 
         if verbose:
             print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60))
-
+        print(point_history)
         np.savez('./Run_{}_{}_{}_iter_{}_control'.format(run + 1, opt_method, max_iterations, radial_control_points), history=point_history)
                  #result=best_function_value,
