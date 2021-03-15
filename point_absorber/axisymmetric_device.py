@@ -1,14 +1,9 @@
-import logging
 import numpy as np
 import capytaine as cpt
 import matplotlib.pyplot as plt
 from scipy.special import comb
-import random
-import xarray as xr
-from scipy.optimize import minimize
 import time
 
-# logging.basicConfig(level=logging.INFO, format="%(levelname)s:\t%(message)s")
 
 # Generating the Bezier Curve:
 # https://stackoverflow.com/questions/12643079/b%C3%A9zier-curve-fitting-with-scipy
@@ -37,7 +32,6 @@ def bezier_curve(points, num_steps=1000):
     # Separate the control points into individual coordinate arrays
     number_control_points = len(points)
     x_coord = points  # np.array([p for p in points])
-    # y_coord = np.array([p[1] for p in points])
     z_coord = z_control_pts  # np.array([p[2] for p in points])
 
     # Create the polynomial array of the bezier curve that is of length num_steps
@@ -47,7 +41,6 @@ def bezier_curve(points, num_steps=1000):
 
     # Compute the new coordinates of the bezier curve and combine into one array
     x_vals = np.dot(x_coord, polynomial_array)
-    # y_vals = np.dot(y_coord, polynomial_array)
     z_vals = np.dot(z_coord, polynomial_array)
     profile_pts = np.asarray([[x_vals[i], 0, z_vals[i]] for i in range(num_steps)])
 
@@ -55,7 +48,7 @@ def bezier_curve(points, num_steps=1000):
 
 
 def make_mesh(points_array):
-    # Close the bottom of the points
+    # Close the bottom of the mesh
     bottom = np.array(points_array[0])
     bottom_spacing = np.linspace(0, bottom[0], mesh_bottom_cells)
     bottom_pts = np.asarray([[bottom_spacing[i], 0, bottom[2]] for i in range(mesh_bottom_cells - 1)])
@@ -70,12 +63,6 @@ def make_mesh(points_array):
     mass = volume * 1000
     radius = points_array[-1][0]
     stiffness = np.pi * 1000 * 9.81 * radius ** 2
-    #approximate_resonance_radial_frequency = np.sqrt(stiffness / mass)
-
-    #if verbose:
-    #    print('\tMass = {}'.format(mass))
-    #    print('\tStiffness = {}'.format(stiffness))
-    #    print('\tApproximate resonance radial frequency = {} rad/s'.format(approximate_resonance_radial_frequency))
 
     return mesh_shape, buoy, mass, stiffness
 
@@ -87,7 +74,7 @@ def evaluate_buoy_forces(buoy_object):
     problems += [cpt.DiffractionProblem(omega=omega, body=buoy_object, wave_direction=wave_direction)
                  for omega in omega_range]
 
-    # Solve each matrix problem
+    # Solve each complex valued matrix problem using the mesh symmetry speedup
     solver = cpt.BEMSolver(engine=cpt.HierarchicalToeplitzMatrixEngine())
     results = [solver.solve(pb) for pb in sorted(problems)]
 
@@ -110,7 +97,8 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
     excitation_force = excitation_force.transpose()
     excitation_force = excitation_force[0, :]
 
-    # Calculate the random wave offset and excitation for each frequency component
+    # Calculate the random wave phase offset and excitation for each frequency component
+    # Phase offsets are seeded to keep time domain results consistent for each function evaluation
     wave_spectra = bretschneider_mitsuyasu_spectrum(omega_range, site_significant_wave_height,
                                                     site_significant_wave_period)
     d_omega = omega_range[1] - omega_range[0]
@@ -127,22 +115,14 @@ def complex_conjugate_control(device_data, device_mass, device_stiffness):
     power_take_off_force = power_take_off_impedance * optimal_velocity
     optimal_power = 0.5 * power_take_off_force * np.conjugate(optimal_velocity)
 
-    if plot_results:
-        plt.plot(omega_range, added_mass, marker='o', label='Added Mass')
-        plt.plot(omega_range, radiation_damping, marker='o', label='Radiation Damping')
-        plt.plot(omega_range, np.abs(excitation_force), marker='o', label='Excitation Force')
-        # TODO: check np.abs function on excitation force magnitude
-
-        plt.xlabel('$\omega$')
-        plt.tight_layout()
-        plt.grid()
-        plt.legend()
-        plt.show()
-
     return optimal_power
 
 
 def bretschneider_mitsuyasu_spectrum(wave_radial_frequency_array, significant_wave_height, significant_wave_period):
+    # Define the wave environment's energy spectrum. This spectrum is used to calculate the wave amplitude at
+    # each given wave frequency.
+
+    # Convert from circular frequency (rad/s) to frequency (1/s, or Hz)
     f = wave_radial_frequency_array / (2 * np.pi)
 
     h = significant_wave_height
@@ -154,38 +134,40 @@ def bretschneider_mitsuyasu_spectrum(wave_radial_frequency_array, significant_wa
 
 
 def objective_function(profile_points):
+    """Problem objective function.
+
+    Args:
+        profile_points (np array): an array of Bezier control point radial values
+
+    Returns:
+        annual_power (float): frequency domain estimate of the device's capable power value using 
+                                an unconstrained complex conjugate controller
+
+    """
 
     # Create bezier points
-    bez_x, bez_y, bez_pts = bezier_curve(profile_points, num_steps=20)
+    bez_x, bez_z, bez_pts = bezier_curve(profile_points, num_steps=20)
 
     # Make Mesh
     wec_shape, wec_mesh, wec_mass, wec_stiffness = make_mesh(bez_pts)
-
-    if show_mesh:
-        wec_mesh.show()
 
     # Evaluate mesh
     wec_hydrodynamic_data = evaluate_buoy_forces(wec_mesh)
     wec_power_data = complex_conjugate_control(wec_hydrodynamic_data, wec_mass, wec_stiffness)
 
     # Infinite penalty if any radii values are going too low or an unconstrained optimization method is going out of bounds
-    if np.count_nonzero(bez_x < 0.01) > 0 or np.count_nonzero(bez_x > 2*draft) > 0 or np.count_nonzero(profile_points < 0.01) > 0 or np.count_nonzero(profile_points > 5) > 0:
+    if np.count_nonzero(bez_x < 0.01) > 0 \
+        or np.count_nonzero(bez_x > 2*draft) > 0 \
+        or np.count_nonzero(profile_points < 0.01) > 0 \
+        or np.count_nonzero(profile_points > 5) > 0:
+        
         annual_power = 1e23
-        # TODO: multiply infinite penalty by sum of constraint violations
     else:
         # Calculate Annual Power
         annual_power = -1.0 * np.sum(np.real(wec_power_data))
 
-    # Plot power results    
-    if plot_results:
-        plt.plot(omega_range, np.real(wec_power_data), marker='o')
-        plt.xlabel('$\omega$')
-        plt.ylabel('Optimal Power')
-        plt.tight_layout()
-        plt.show()
-
     # Save results to global history variable
-    point_history.append((profile_points, annual_power))
+    point_history.append([profile_points, annual_power])
 
     if verbose:
         print('Current control points: {}'.format(profile_points),
@@ -246,7 +228,7 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
 
         return np.array(x)
 
-    # Find a random discrete starting point within the domain bounds if one is not given
+    # Find a random discrete starting point within the domain bounds
     d = len(delta_x)
     if random_seed is not None:
         random.seed(random_seed)
@@ -255,7 +237,7 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
         n = int((upper_bounds[k] - lower_bounds[k]) / delta_x[k]) + 1
         x_0[k] = lower_bounds[k] + random.randint(0, n) * delta_x[k]
 
-    # Define tunable parameters
+    # Define tunable increment and stoppingparameters
     increment_options = np.array([0.50, -0.50, 0.25, -0.25])
     bounds = [0.01, 5.0]
     max_failed_moves = 128
@@ -269,7 +251,7 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
     while not converged:
         x_new = random_climb(x_k, increment_options, bounds[0], bounds[1])
         f_new = objective_function(profile_points=x_new)
-        if f_new < f_k or np.isclose(f_new, f_k):
+        if f_new <= f_k or np.isclose(f_new, f_k):
             x_k = np.array(x_new)
             f_k = f_new
             failed_moves = 0
@@ -287,79 +269,46 @@ if __name__ == '__main__':
     ##############################
     # User inputs: WEC vars
     draft = 5
-    ###radial_control_points = 2
-    ###z_control_pts = np.linspace(-draft, 0, radial_control_points)
+    radial_control_points = 4
+    z_control_pts = np.linspace(-draft, 0, radial_control_points)
+    
+    # User inputs: mesh and modeling parameters
+    verbose = True
     mesh_resolution = 40
     mesh_bottom_cells = 6
     degree_of_freedom = 'Heave'
     friction_damping_factor = 0.10
 
-    # User inputs: Wave vars
+    # User inputs: environmental wave vars
     wave_direction = 0.0
     omega_range = np.linspace(0.3, 2.0, 40)
     site_significant_wave_height = 3.5
     site_significant_wave_period = 11.0
 
-    # User input: Visualization/Logging vars
-    plot_results = False
-    show_mesh = False
-    verbose = True
-
     # User input: Optimization Vars
-    ###opt_method = 'Nelder-Mead'
+    opt_method = 'random_hill_climbing_algorithm'
+    lower_bounds = 0.25*np.ones(shape=radial_control_points)
+    upper_bounds = 5.0*np.ones(shape=radial_control_points)
+    delta_x = 0.25*np.ones(shape=radial_control_points)
     number_of_runs = 30
-    max_iterations = None  # Set to None if you want the default max iterations
     ##############################
-
 
 
     # Loop for if we want to run multiple times with different starting points
     for run in range(number_of_runs):
     
-        # Global List used to record all profiles
+        # Reset global List used to record all profiles
         point_history = []
-
-        # Random seed for reprodicible initial starting points
-        ###np.random.seed(run * radial_control_points)
         
         if verbose:
             print('Starting Run {} of {}\n'.format(run + 1, number_of_runs))
 
-        # Create starting radial control point
-        ###start_x_points = np.random.uniform(0.01, 5, size=radial_control_points)
-
-        # Create point bounds
-        ###point_bounds = np.array([[0, 5]] * radial_control_points)
-
         # Run
         start_time = time.perf_counter()
-        #result = minimize(objective_function,
-        #                  start_x_points,
-        #                  method=opt_method,
-        #                  options={'disp': True, 'return_all': True, 'maxiter': max_iterations})
-        #if run == 0:
-        #    point_history = []
-        #    radial_control_points = 2
-        #    z_control_pts = np.linspace(-draft, 0, radial_control_points)
-        #    opt_method = 'exhaustive_search'
-        #    lower_bound = 0.25*np.ones(shape=2)
-        #    upper_bound = 5.0*np.ones(shape=2)
-        ##    delta_x = 0.25*np.ones(shape=2)
-        #exhaustive_search(lower_bound=lower_bound, upper_bound=upper_bound, delta_x=delta_x)
-
-        lower_bounds = 0.25*np.ones(shape=4)
-        upper_bounds = 5.0*np.ones(shape=4)
-        delta_x = 0.25*np.ones(shape=4)
-
-        radial_control_points = 4
-        z_control_pts = np.linspace(-draft, 0, radial_control_points)
-        opt_method = 'random_hill_climbing_algorithm'
         random_hill_climbing_algorithm(lower_bounds=lower_bounds, upper_bounds=upper_bounds, delta_x=delta_x, random_seed=run)
-
         end_time = time.perf_counter()
 
         if verbose:
             print('\nTook {} minute(s) to run\n'.format((end_time - start_time) / 60))
-        print(point_history)
-        np.savez('./Run_{}_{}_{}_iter_{}_control'.format(run + 1, opt_method, max_iterations, radial_control_points), history=point_history)
-                 #result=best_function_value,
+
+        np.savez('./Run_{}_{}__{}_control_points'.format(run + 1, opt_method, radial_control_points), history=point_history)
