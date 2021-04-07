@@ -235,6 +235,8 @@ def random_hill_climbing_algorithm(lower_bounds, upper_bounds, delta_x, random_s
     x_0 = np.zeros(shape=d)
     for k in range(d):
         n = int((upper_bounds[k] - lower_bounds[k]) / delta_x[k]) + 1
+        # TODO: the + 1 for n might need to be removed, as I saw a starting point
+        # on the remote have a variable start at 5.25 m
         x_0[k] = lower_bounds[k] + random.randint(0, n) * delta_x[k]
 
     # Define tunable increment and stoppingparameters
